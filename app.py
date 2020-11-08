@@ -1,8 +1,5 @@
 import dash
 import dash_core_components as dcc
-import dash_html_components as html
-import dash_core_components as dcc
-import dash_html_components as html
 from dash.dependencies import Input, Output, State
 import plotly.express as px
 import pandas as pd
@@ -10,22 +7,18 @@ import dash_table
 import dash_bootstrap_components as dbc
 import dash_html_components as html
 import json
-# external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
-#
-# app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
 app = dash.Dash(
     external_stylesheets=[dbc.themes.BOOTSTRAP]
 )
 
 
-terms = pd.read_csv('db/all_terms.csv', header=0, names=['term','counts','date'])
-bigrams = pd.read_csv('db/all_bigrams.csv', header=0, names=['term','counts','date'])
-trigrams = pd.read_csv('db/all_trigrams.csv', header=0, names=['term','counts','date'])
+all_terms = pd.read_csv('db/daily_terms.csv', header=0, names=['term','counts','date'])
 freq_terms = pd.read_csv('db/frequent_terms.csv')
 freq_bigrams = pd.read_csv('db/frequent_bigrams.csv')
 freq_trigrams = pd.read_csv('db/frequent_trigrams.csv')
 
+selected_items = []
 
 term_input = dbc.FormGroup(
     [
@@ -36,17 +29,6 @@ term_input = dbc.FormGroup(
     className="mr-3",
 )
 
-
-# check_list = dcc.Checklist(
-#     id="selected-terms",
-#     options=[
-#         {'label': 'New York City', 'value': 'NYC'},
-#         {'label': 'Montréal', 'value': 'MTL'},
-#         {'label': 'San Francisco', 'value': 'SF'}
-#     ],
-#     value=['NYC', 'MTL']
-# )
-
 app.layout = dbc.Container([
     dcc.Store(id="store"),
     html.H1("Trends Analysis for Twitter"),
@@ -55,8 +37,6 @@ app.layout = dbc.Container([
         dbc.Form([term_input],
                  inline=True),
         html.Div(id='intermediate-value', style={'display': 'none'}),
-        # html.Br(),
-        # html.Div([check_list]),
         dcc.Graph(id="graph", style={"width": "75%", "display": "inline-block"}),
         html.Div([dbc.Alert("Frequent terms for current date", color="primary")]),
         html.Div([
@@ -72,26 +52,6 @@ app.layout = dbc.Container([
                              "overflowX": "scroll",
                              'height': 300},
                      ),
-                     dbc.Col(
-                         html.Div([dash_table.DataTable(
-                             id='day-bigram-table',
-                             page_size=20,
-                         )]),
-                         width={"size": 4},
-                         style={
-                             "overflowX": "scroll",
-                             'height': 300},
-                     ),
-                     dbc.Col(
-                         html.Div([dash_table.DataTable(
-                             id='day-trigram-table',
-                             page_size=20,
-                         )]),
-                         width={"size": 4},
-                         style={
-                             "overflowX": "scroll",
-                             'height': 300},
-                     )
                  ])
                 ],
             ),
@@ -167,55 +127,57 @@ def update_graph(jsonified_cleaned_data):
 @app.callback([
         Output('day-terms-table', 'data'),
         Output('day-terms-table', 'columns'),
-        Output('day-bigram-table', 'data'),
-        Output('day-bigram-table', 'columns'),
-        Output('day-trigram-table', 'data'),
-        Output('day-trigram-table', 'columns')
     ],
     [Input('graph', 'clickData')])
 def display_click_data(clickData):
     if clickData:
         point = clickData['points']
-        terms_df = terms[terms['date'] == point[0]['x']][['term','counts']].sort_values(by=['counts'], ascending=False)
-        bigrams_df = bigrams[bigrams['date'] == point[0]['x']][['term','counts']].sort_values(by=['counts'], ascending=False)
-        trigrams_df = trigrams[trigrams['date'] == point[0]['x']][['term','counts']].sort_values(by=['counts'], ascending=False)
+        terms_df = all_terms[all_terms['date'] == point[0]['x']][['term','counts']].sort_values(by=['counts'], ascending=False)
         return terms_df[['term','counts']].to_dict('records'),\
-               [{"name": i, "id": i} for i in terms_df.columns],\
-               bigrams_df[['term','counts']].to_dict('records'),\
-               [{"name": i, "id": i} for i in bigrams_df.columns],\
-               trigrams_df[['term','counts']].to_dict('records'), \
-               [{"name": i, "id": i} for i in trigrams_df.columns]
+               [{"name": i, "id": i} for i in terms_df.columns]
     else:
-        return [],[],[],[],[],[]
+        return [],[]
+
 
 
 @app.callback(Output('intermediate-value', 'children'),
               [Input('all-terms-table', "derived_virtual_data"),
                Input('all-terms-table', 'derived_virtual_selected_rows'),
+               Input('all-bigrams-table', "derived_virtual_data"),
+               Input('all-bigrams-table', 'derived_virtual_selected_rows'),
+               Input('all-trigrams-table', "derived_virtual_data"),
+               Input('all-trigrams-table', 'derived_virtual_selected_rows'),
                Input('submit-val', 'n_clicks'),
                State('term', 'value')])
-def update_graph_data(derived_virtual_data, derived_virtual_selected_rows, n_clicks, value):
-    if not derived_virtual_selected_rows:
-        selected = [value] if value is not None else ['']
+def update_graph_data(term_data,
+                      term_selected,
+                      bigram_data,
+                      bigram_selected,
+                      trigram_data,
+                      trigram_selected,
+                      n_clicks, value):
+    if value is not None:
+        selected = [value]
     else:
-        selected = [value] if value is not None else []
-    if derived_virtual_data is not None:
-        for i,row in enumerate(derived_virtual_data):
-            if i in derived_virtual_selected_rows:
+        selected = []
+    if term_data is not None:
+        for i,row in enumerate(term_data):
+            if i in term_selected:
                 selected.append(row['term'])
-        result = []
-        for x in selected:
-            if len(x.split()) == 1:
-                result.append(terms[terms['term'] == x])
-            elif len(x.split()) == 2:
-                result.append(bigrams[bigrams['term'] == x])
-            elif len(x.split()) == 3:
-                result.append(trigrams[trigrams['term'] == x])
-        if len(result) > 0:
-            result = pd.concat(result).to_json(date_format='iso', orient='split')
-            return result
-        else:
-            return ''
+    if bigram_data is not None:
+        for i, row in enumerate(bigram_data):
+            if i in bigram_selected:
+                selected.append(row['bigram'])
+    if trigram_data is not None:
+        for i, row in enumerate(trigram_data):
+            if i in trigram_selected:
+                selected.append(row['trigram'])
+    result = []
+    for x in selected:
+        result.append(all_terms[all_terms['term'] == x])
+    if len(result) > 0:
+        result = pd.concat(result).to_json(date_format='iso', orient='split')
+        return result
     else:
         return ''
 
