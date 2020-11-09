@@ -12,19 +12,17 @@ app = dash.Dash(
     external_stylesheets=[dbc.themes.BOOTSTRAP]
 )
 
-
 all_terms = pd.read_csv('db/daily_terms.csv', header=0, names=['term','counts','date'])
 freq_terms = pd.read_csv('db/frequent_terms.csv')
 freq_bigrams = pd.read_csv('db/frequent_bigrams.csv')
 freq_trigrams = pd.read_csv('db/frequent_trigrams.csv')
 
-selected_items = []
 
 term_input = dbc.FormGroup(
     [
         dbc.Label("Input term:", html_for="term", className="mr-2"),
         dbc.Input(type="text", id="term", placeholder="text"),
-        dbc.Button("Submit", color="primary", id="submit-val"),
+        dbc.Button("Submit", color="primary", id="submit-val", n_clicks=0),
     ],
     className="mr-3",
 )
@@ -34,9 +32,27 @@ app.layout = dbc.Container([
     html.H1("Trends Analysis for Twitter"),
     html.Hr(),
     html.Div([
-        dbc.Form([term_input],
-                 inline=True),
+             dbc.Row(
+                 [
+                     dbc.Col(
+                         dbc.Form([term_input], inline=True),
+                     ),
+                     dbc.Col(
+                         html.Div(dash_table.DataTable(
+                            columns=[{"name": "term", "id": "term", "deletable": True}],
+                            editable=True,
+                            row_deletable=True,
+                            id='userinput-table'
+                        )),
+                     ),
+                 ])
+                ],
+            ),
+    # html.Div([
+    #     dbc.Form([term_input],
+    #              inline=True),
         html.Div(id='intermediate-value', style={'display': 'none'}),
+        html.Div(id='user-input-value', style={'display': 'none'}),
         dcc.Graph(id="graph", style={"width": "75%", "display": "inline-block"}),
         html.Div([dbc.Alert("Frequent terms for current date", color="primary")]),
         html.Div([
@@ -47,10 +63,9 @@ app.layout = dbc.Container([
                              id='day-terms-table',
                              page_size=20,
                              row_selectable="multi",
-                             selected_columns=[],
                              selected_rows=[],
                          )]),
-                         width={"size": 4},
+                         width={"size": 10},
                          style={
                              "overflowX": "scroll",
                              'height': 300},
@@ -111,20 +126,6 @@ app.layout = dbc.Container([
             ),
         ])
     ])
-    ]
-)
-
-
-@app.callback(Output('graph', 'figure'),
-              [Input('intermediate-value', 'children')])
-def update_graph(jsonified_cleaned_data):
-    try:
-        dff = pd.read_json(jsonified_cleaned_data, orient='split')
-        fig = px.scatter(dff, x="date", y="counts", color="term",
-                   hover_name="term", height=700, width=1200)
-    except Exception:
-        fig = px.scatter()
-    return fig
 
 
 @app.callback([
@@ -142,7 +143,6 @@ def display_click_data(clickData):
         return [],[]
 
 
-
 @app.callback(Output('intermediate-value', 'children'),
               [Input('all-terms-table', "derived_virtual_data"),
                Input('all-terms-table', 'derived_virtual_selected_rows'),
@@ -151,22 +151,17 @@ def display_click_data(clickData):
                Input('all-trigrams-table', "derived_virtual_data"),
                Input('all-trigrams-table', 'derived_virtual_selected_rows'),
                Input('day-terms-table', "derived_virtual_data"),
-               Input('day-terms-table', 'derived_virtual_selected_rows'),
-               Input('submit-val', 'n_clicks'),
-               State('term', 'value')])
-def update_graph_data(term_data,
+               Input('day-terms-table', 'derived_virtual_selected_rows')])
+def save_selection(term_data,
                       term_selected,
                       bigram_data,
                       bigram_selected,
                       trigram_data,
                       trigram_selected,
                       day_data,
-                      day_selected,
-                      n_clicks, value):
-    if value is not None:
-        selected = [value]
-    else:
-        selected = []
+                      day_selected):
+
+    selected = []
     if term_data is not None:
         for i,row in enumerate(term_data):
             if i in term_selected:
@@ -183,14 +178,42 @@ def update_graph_data(term_data,
         for i, row in enumerate(day_data):
             if i in day_selected:
                 selected.append(row['term'])
+    return selected
+
+
+@app.callback(Output('userinput-table','data'),
+              Input('submit-val', 'n_clicks'),
+              [State('term', 'value'),
+               State('userinput-table', 'data'),
+               State('userinput-table', 'columns')])
+def user_input_list(n_clicks, value, rows, columns):
+    if n_clicks > 0:
+        if rows is not None:
+            rows.append({"term": value})
+            return rows
+        else:
+            return [{"term": value}]
+
+
+@app.callback(Output('graph', 'figure'),
+               [Input('userinput-table', 'data'),
+               Input('intermediate-value', 'children')])
+def update_graph(user_values, selected):
     result = []
     for x in selected:
         result.append(all_terms[all_terms['term'] == x])
+    if user_values is not None:
+        for y in user_values:
+            result.append(all_terms[all_terms['term'] == y['term']])
     if len(result) > 0:
         result = pd.concat(result).to_json(date_format='iso', orient='split')
-        return result
-    else:
-        return ''
+    try:
+        dff = pd.read_json(result, orient='split')
+        fig = px.scatter(dff, x="date", y="counts", color="term",
+                   hover_name="term", height=700, width=1200)
+    except Exception:
+        fig = px.scatter()
+    return fig
 
 
 if __name__ == '__main__':
