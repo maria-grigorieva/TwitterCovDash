@@ -46,6 +46,9 @@ app.layout = dbc.Container([
                          html.Div([dash_table.DataTable(
                              id='day-terms-table',
                              page_size=20,
+                             row_selectable="multi",
+                             selected_columns=[],
+                             selected_rows=[],
                          )]),
                          width={"size": 4},
                          style={
@@ -147,6 +150,8 @@ def display_click_data(clickData):
                Input('all-bigrams-table', 'derived_virtual_selected_rows'),
                Input('all-trigrams-table', "derived_virtual_data"),
                Input('all-trigrams-table', 'derived_virtual_selected_rows'),
+               Input('day-terms-table', "derived_virtual_data"),
+               Input('day-terms-table', 'derived_virtual_selected_rows'),
                Input('submit-val', 'n_clicks'),
                State('term', 'value')])
 def update_graph_data(term_data,
@@ -155,6 +160,8 @@ def update_graph_data(term_data,
                       bigram_selected,
                       trigram_data,
                       trigram_selected,
+                      day_data,
+                      day_selected,
                       n_clicks, value):
     if value is not None:
         selected = [value]
@@ -172,6 +179,10 @@ def update_graph_data(term_data,
         for i, row in enumerate(trigram_data):
             if i in trigram_selected:
                 selected.append(row['trigram'])
+    if day_data is not None:
+        for i, row in enumerate(day_data):
+            if i in day_selected:
+                selected.append(row['term'])
     result = []
     for x in selected:
         result.append(all_terms[all_terms['term'] == x])
