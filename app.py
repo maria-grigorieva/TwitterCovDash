@@ -7,6 +7,10 @@ import dash_table
 import dash_bootstrap_components as dbc
 import dash_html_components as html
 import json
+from wordcloud import WordCloud
+import plotly.graph_objs as go
+from io import BytesIO
+import base64
 
 app = dash.Dash(
     external_stylesheets=[dbc.themes.BOOTSTRAP]
@@ -28,7 +32,7 @@ term_input = dbc.FormGroup(
 )
 
 app.layout = dbc.Container([
-    dcc.Store(id="store"),
+    # dcc.Store(id="store"),
     html.H1("Trends Analysis for Twitter"),
     html.Hr(),
     html.Div([
@@ -48,9 +52,6 @@ app.layout = dbc.Container([
                  ])
                 ],
             ),
-    # html.Div([
-    #     dbc.Form([term_input],
-    #              inline=True),
         html.Div(id='intermediate-value', style={'display': 'none'}),
         html.Div(id='user-input-value', style={'display': 'none'}),
         dcc.Graph(id="graph", style={"width": "75%", "display": "inline-block"}),
@@ -65,11 +66,16 @@ app.layout = dbc.Container([
                              row_selectable="multi",
                              selected_rows=[],
                          )]),
-                         width={"size": 10},
+                         width={"size": 5},
                          style={
                              "overflowX": "scroll",
                              'height': 300},
                      ),
+                     dbc.Col(
+                         html.Div([
+                             html.Img(id='image_wc')
+                         ])
+                     )
                  ])
                 ],
             ),
@@ -128,19 +134,33 @@ app.layout = dbc.Container([
     ])
 
 
+def wordcloud(data):
+    print(data)
+    wc = WordCloud(background_color='white', width=480, height=360)
+    wc.fit_words(data)
+    return wc.to_image()
+
 @app.callback([
         Output('day-terms-table', 'data'),
         Output('day-terms-table', 'columns'),
+        Output('image_wc', 'src')
     ],
     [Input('graph', 'clickData')])
 def display_click_data(clickData):
+    print(clickData)
     if clickData:
         point = clickData['points']
+        current_frequency = point[0]['y']
         terms_df = all_terms[all_terms['date'] == point[0]['x']][['term','counts']].sort_values(by=['counts'], ascending=False)
+        near_frequent_terms = terms_df[terms_df['counts'].between(current_frequency - 1000, current_frequency + 1000)]
+        terms_freq = {row['term']:row['counts'] for row in near_frequent_terms[['term','counts']].to_dict('records')}
+        img = BytesIO()
+        wordcloud(terms_freq).save(img, format='PNG')
         return terms_df[['term','counts']].to_dict('records'),\
-               [{"name": i, "id": i} for i in terms_df.columns]
+               [{"name": i, "id": i} for i in terms_df.columns],\
+               'data:image/png;base64,{}'.format(base64.b64encode(img.getvalue()).decode())
     else:
-        return [],[]
+        return [],[],None
 
 
 @app.callback(Output('intermediate-value', 'children'),
@@ -214,6 +234,7 @@ def update_graph(user_values, selected):
     except Exception:
         fig = px.scatter()
     return fig
+
 
 
 if __name__ == '__main__':
