@@ -138,6 +138,7 @@ def wordcloud(data):
 @app.callback([
         Output('day-terms-table', 'data'),
         Output('day-terms-table', 'columns'),
+        Output('day-terms-table', 'selected_rows'),
         Output('image_wc', 'src'),
         Output('day-stats', 'children'),
         Output('wc-id', 'children')
@@ -149,42 +150,60 @@ def display_click_data(clickData):
         point = clickData['points']
         current_frequency = point[0]['y']
         terms_df = all_terms[all_terms['date'] == point[0]['x']][['term','counts']].sort_values(by=['counts'], ascending=False)
-        near_frequent_terms = terms_df[terms_df['counts'].between(current_frequency - 2000, current_frequency + 2000)]
+        max_frequency = terms_df['counts'].max()
+        print(max_frequency)
+        current_frequency_percent = (current_frequency*100) / max_frequency
+        print(current_frequency_percent)
+        top_freq = current_frequency_percent+current_frequency_percent*0.3
+        bottom_freq = current_frequency_percent-current_frequency_percent*0.3
+        top_freq_value = (max_frequency*top_freq)/100
+        bottom_freq_value = (max_frequency*bottom_freq)/100
+        near_frequent_terms = terms_df[terms_df['counts'].between(bottom_freq_value, top_freq_value)]
         terms_freq = {row['term']:row['counts'] for row in near_frequent_terms[['term','counts']].to_dict('records')}
         img = BytesIO()
         wordcloud(terms_freq).save(img, format='PNG')
         value = dbc.Alert(f'Selected term "{point[0]["hovertext"]}" with frequency = {point[0]["y"]}. '
                           f'Frequent terms for {point[0]["x"]}', color="primary")
+        value_1 = dbc.Alert(f'Selected term "{point[0]["hovertext"]}" with frequency = {point[0]["y"]}. '
+                          f'Terms for {point[0]["x"]} with frequencies between {bottom_freq_value} and {top_freq_value}', color="primary")
         return terms_df[['term','counts']].to_dict('records'),\
                [{"name": i, "id": i} for i in terms_df.columns],\
+                [],\
                'data:image/png;base64,{}'.format(base64.b64encode(img.getvalue()).decode()), \
                value,\
-               value
+               value_1
     else:
-        return [],[],None,None,None
+        return [],[],[],None,None,None
 
 
-@app.callback(Output('intermediate-value', 'children'),
-              [Input('all-terms-table', "derived_virtual_data"),
+@app.callback(Output('userinput-table','data'),
+              [Input('submit-val', 'n_clicks'),
+               Input('all-terms-table', "derived_virtual_data"),
                Input('all-terms-table', 'derived_virtual_selected_rows'),
                Input('all-bigrams-table', "derived_virtual_data"),
                Input('all-bigrams-table', 'derived_virtual_selected_rows'),
                Input('all-trigrams-table', "derived_virtual_data"),
                Input('all-trigrams-table', 'derived_virtual_selected_rows'),
                Input('day-terms-table', "derived_virtual_data"),
-               Input('day-terms-table', 'derived_virtual_selected_rows')])
-def save_selection(term_data,
-                      term_selected,
-                      bigram_data,
-                      bigram_selected,
-                      trigram_data,
-                      trigram_selected,
-                      day_data,
-                      day_selected):
-
+               Input('day-terms-table', 'derived_virtual_selected_rows')],
+              [State('term', 'value'),
+               State('userinput-table', 'data'),
+               State('userinput-table', 'columns')])
+def user_input_list(n_clicks,
+                    term_data,
+                    term_selected,
+                    bigram_data,
+                    bigram_selected,
+                    trigram_data,
+                    trigram_selected,
+                    day_data,
+                    day_selected,
+                    value,
+                    rows,
+                    columns):
     selected = []
     if term_data is not None:
-        for i,row in enumerate(term_data):
+        for i, row in enumerate(term_data):
             if i in term_selected:
                 selected.append(row['term'])
     if bigram_data is not None:
@@ -199,33 +218,33 @@ def save_selection(term_data,
         for i, row in enumerate(day_data):
             if i in day_selected:
                 selected.append(row['term'])
-    return selected
+    if rows is not None:
+        for x in selected:
+            if not any(d['term'] == x for d in rows):
+                rows.append({"term": x})
+        if n_clicks > 0:
+            if not any(d['term'] == value for d in rows):
+                rows.append({"term": value})
+    else:
+        rows = []
+        for x in selected:
+            rows.append({"term": x})
+        if n_clicks > 0:
+            if not any(d['term'] == value for d in rows):
+                rows.append({"term": value})
 
-
-@app.callback(Output('userinput-table','data'),
-              Input('submit-val', 'n_clicks'),
-              [State('term', 'value'),
-               State('userinput-table', 'data'),
-               State('userinput-table', 'columns')])
-def user_input_list(n_clicks, value, rows, columns):
-    if n_clicks > 0:
-        if rows is not None:
-            rows.append({"term": value})
-            return rows
-        else:
-            return [{"term": value}]
+    return rows
 
 
 @app.callback(Output('graph', 'figure'),
-               [Input('userinput-table', 'data'),
-               Input('intermediate-value', 'children')])
-def update_graph(user_values, selected):
+              Input('userinput-table', 'data'),
+              State('userinput-table', 'data'))
+def update_graph(selected, data):
+    print(selected)
     result = []
     for x in selected:
-        result.append(all_terms[all_terms['term'] == x])
-    if user_values is not None:
-        for y in user_values:
-            result.append(all_terms[all_terms['term'] == y['term']])
+        result.append(all_terms[all_terms['term'] == x['term']])
+    print(result)
     if len(result) > 0:
         result = pd.concat(result).to_json(date_format='iso', orient='split')
     try:
