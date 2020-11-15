@@ -13,7 +13,7 @@ from io import BytesIO
 import base64
 
 app = dash.Dash(
-    external_stylesheets=[dbc.themes.BOOTSTRAP]
+    external_stylesheets=[dbc.themes.COSMO]
 )
 
 all_terms = pd.read_csv('db/daily_terms.csv', header=0, names=['term','counts','date'])
@@ -32,54 +32,53 @@ term_input = dbc.FormGroup(
 )
 
 app.layout = dbc.Container([
-    # dcc.Store(id="store"),
     html.H1("Trends Analysis for Twitter"),
     html.Hr(),
-    html.Div([
-             dbc.Row(
-                 [
-                     dbc.Col(
-                         dbc.Form([term_input], inline=True),
-                     ),
-                     dbc.Col(
-                         html.Div(dash_table.DataTable(
-                            columns=[{"name": "term", "id": "term", "deletable": True}],
-                            editable=True,
-                            row_deletable=True,
-                            id='userinput-table'
-                        )),
-                     ),
-                 ])
-                ],
-            ),
-        html.Div(id='intermediate-value', style={'display': 'none'}),
-        html.Div(id='user-input-value', style={'display': 'none'}),
-        dcc.Graph(id="graph", style={"width": "75%", "display": "inline-block"}),
-        html.Div([dbc.Alert("Frequent terms for current date", color="primary")]),
-        html.Div([
-             dbc.Row(
-                 [
-                     dbc.Col(
-                         html.Div([dash_table.DataTable(
-                             id='day-terms-table',
-                             page_size=20,
-                             row_selectable="multi",
-                             selected_rows=[],
-                         )]),
-                         width={"size": 5},
-                         style={
-                             "overflowX": "scroll",
-                             'height': 300},
-                     ),
-                     dbc.Col(
-                         html.Div([
-                             html.Img(id='image_wc')
-                         ])
-                     )
-                 ])
-                ],
-            ),
-        html.Div([dbc.Alert("Frequent terms", color="primary")]),
+    html.Div(
+        dbc.Form([term_input], inline=True),
+        className="m-5"
+    ),
+    html.Div(id='intermediate-value', style={'display': 'none'}),
+    html.Div(id='user-input-value', style={'display': 'none'}),
+    html.Div(
+        dbc.Row(
+            [
+                dbc.Col(
+                    html.Div(dash_table.DataTable(
+                        columns=[{"name": "term", "id": "term", "deletable": True}],
+                        editable=True,
+                        row_deletable=True,
+                        id='userinput-table'
+                    )),
+                    md=1,
+                    className="ml-5"
+
+                ),
+                dbc.Col([
+                    html.Div(
+                        dcc.Graph(id="graph", style={"width": "100%", "display": "inline-block"}),
+                    ),
+                    html.Div([
+                        html.Div(id="wc-id"),
+                        html.Div(html.Img(id='image_wc', style={"width": "50%"}),
+                        style={'textAlign': 'center'})
+                    ])],
+                ),
+                dbc.Col([
+                    html.Div(id="day-stats"),
+                    html.Div(dash_table.DataTable(
+                        id='day-terms-table',
+                        page_size=20,
+                        row_selectable="multi",
+                        selected_rows=[],
+                    ))],
+                    md = 2,
+                    className = "mr-5"
+                 ),
+            ],
+        ),
+    ),
+        html.Div(dbc.Alert("Frequent terms", color="primary")),
         html.Div([
             dbc.Row(
                 [
@@ -93,10 +92,10 @@ app.layout = dbc.Container([
                             selected_rows=[],
                             data=freq_terms.to_dict('records'),
                         )]),
-                        width={"size": 4},
-                        style={
-                            "overflowX": "scroll",
-                            'height': 500},
+                        md=2,
+                        # style={
+                        #     "overflowX": "scroll",
+                        #     'height': 500},
                     ),
                     dbc.Col(
                         html.Div([dash_table.DataTable(
@@ -108,10 +107,7 @@ app.layout = dbc.Container([
                             selected_rows=[],
                             data=freq_bigrams.to_dict('records'),
                         )]),
-                        width={"size": 4},
-                        style={
-                            "overflowX": "scroll",
-                            'height': 500},
+                        md=2,
                     ),
                     dbc.Col(
                         html.Div([dash_table.DataTable(
@@ -123,19 +119,18 @@ app.layout = dbc.Container([
                             selected_rows=[],
                             data=freq_trigrams.to_dict('records'),
                         )]),
-                        width={"size": 4},
-                        style={
-                            "overflowX": "scroll",
-                            'height': 500},
-                    ),
+                        md=3,
+                    )
                 ]
-            ),
-        ])
-    ])
+            )],
+            className="ml-5"
+        )
+    ],
+    fluid=True,
+)
 
 
 def wordcloud(data):
-    print(data)
     wc = WordCloud(background_color='white', width=480, height=360)
     wc.fit_words(data)
     return wc.to_image()
@@ -143,7 +138,9 @@ def wordcloud(data):
 @app.callback([
         Output('day-terms-table', 'data'),
         Output('day-terms-table', 'columns'),
-        Output('image_wc', 'src')
+        Output('image_wc', 'src'),
+        Output('day-stats', 'children'),
+        Output('wc-id', 'children')
     ],
     [Input('graph', 'clickData')])
 def display_click_data(clickData):
@@ -152,15 +149,19 @@ def display_click_data(clickData):
         point = clickData['points']
         current_frequency = point[0]['y']
         terms_df = all_terms[all_terms['date'] == point[0]['x']][['term','counts']].sort_values(by=['counts'], ascending=False)
-        near_frequent_terms = terms_df[terms_df['counts'].between(current_frequency - 1000, current_frequency + 1000)]
+        near_frequent_terms = terms_df[terms_df['counts'].between(current_frequency - 2000, current_frequency + 2000)]
         terms_freq = {row['term']:row['counts'] for row in near_frequent_terms[['term','counts']].to_dict('records')}
         img = BytesIO()
         wordcloud(terms_freq).save(img, format='PNG')
+        value = dbc.Alert(f'Selected term "{point[0]["hovertext"]}" with frequency = {point[0]["y"]}. '
+                          f'Frequent terms for {point[0]["x"]}', color="primary")
         return terms_df[['term','counts']].to_dict('records'),\
                [{"name": i, "id": i} for i in terms_df.columns],\
-               'data:image/png;base64,{}'.format(base64.b64encode(img.getvalue()).decode())
+               'data:image/png;base64,{}'.format(base64.b64encode(img.getvalue()).decode()), \
+               value,\
+               value
     else:
-        return [],[],None
+        return [],[],None,None,None
 
 
 @app.callback(Output('intermediate-value', 'children'),
@@ -230,7 +231,7 @@ def update_graph(user_values, selected):
     try:
         dff = pd.read_json(result, orient='split')
         fig = px.scatter(dff, x="date", y="counts", color="term",
-                   hover_name="term", height=700, width=1200)
+                   hover_name="term")
     except Exception:
         fig = px.scatter()
     return fig
