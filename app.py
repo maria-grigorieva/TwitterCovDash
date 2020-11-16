@@ -22,6 +22,21 @@ freq_bigrams = pd.read_csv('db/frequent_bigrams.csv')
 freq_trigrams = pd.read_csv('db/frequent_trigrams.csv')
 
 
+def build_freq_table(id, data, value):
+    return html.Div([
+        html.H3([dbc.Badge(value, className="ml-1")]),
+        dash_table.DataTable(
+                            id=id,
+                            columns=[{"name": i, "id": i} for i in data.columns],
+                            page_size=30,
+                            row_selectable="multi",
+                            selected_columns=[],
+                            selected_rows=[],
+                            data=data.to_dict('records'),
+                        )],
+            className="m-5"
+            )
+
 term_input = dbc.FormGroup(
     [
         dbc.Label("Input term:", html_for="term", className="mr-2"),
@@ -50,7 +65,7 @@ app.layout = dbc.Container([
                         row_deletable=True,
                         id='userinput-table'
                     )),
-                    md=1,
+                    md=2,
                     className="ml-5"
 
                 ),
@@ -78,48 +93,21 @@ app.layout = dbc.Container([
             ],
         ),
     ),
-        html.Div(dbc.Alert("Frequent terms", color="primary")),
+        html.Hr(),
         html.Div([
             dbc.Row(
                 [
                     dbc.Col(
-                        html.Div([dash_table.DataTable(
-                            id='all-terms-table',
-                            columns=[{"name": i, "id": i} for i in freq_terms.columns],
-                            page_size=30,
-                            row_selectable="multi",
-                            selected_columns=[],
-                            selected_rows=[],
-                            data=freq_terms.to_dict('records'),
-                        )]),
-                        md=2,
-                        # style={
-                        #     "overflowX": "scroll",
-                        #     'height': 500},
+                        build_freq_table("all-terms-table", freq_terms, "Terms"),
+                        md=4,
                     ),
                     dbc.Col(
-                        html.Div([dash_table.DataTable(
-                            id='all-bigrams-table',
-                            columns=[{"name": i, "id": i} for i in freq_bigrams.columns],
-                            page_size=30,
-                            row_selectable="multi",
-                            selected_columns=[],
-                            selected_rows=[],
-                            data=freq_bigrams.to_dict('records'),
-                        )]),
-                        md=2,
+                        build_freq_table("all-bigrams-table", freq_bigrams, "Bigrams"),
+                        md=4,
                     ),
                     dbc.Col(
-                        html.Div([dash_table.DataTable(
-                            id='all-trigrams-table',
-                            columns=[{"name": i, "id": i} for i in freq_trigrams.columns],
-                            page_size=30,
-                            row_selectable="multi",
-                            selected_columns=[],
-                            selected_rows=[],
-                            data=freq_trigrams.to_dict('records'),
-                        )]),
-                        md=3,
+                        build_freq_table("all-trigrams-table", freq_trigrams, "Trigrams"),
+                        md=4,
                     )
                 ]
             )],
@@ -131,7 +119,7 @@ app.layout = dbc.Container([
 
 
 def wordcloud(data):
-    wc = WordCloud(background_color='white', width=480, height=360)
+    wc = WordCloud(background_color='white', width=300, height=200)
     wc.fit_words(data)
     return wc.to_image()
 
@@ -145,27 +133,22 @@ def wordcloud(data):
     ],
     [Input('graph', 'clickData')])
 def display_click_data(clickData):
-    print(clickData)
     if clickData:
         point = clickData['points']
         current_frequency = point[0]['y']
         terms_df = all_terms[all_terms['date'] == point[0]['x']][['term','counts']].sort_values(by=['counts'], ascending=False)
         max_frequency = terms_df['counts'].max()
-        print(max_frequency)
         current_frequency_percent = (current_frequency*100) / max_frequency
-        print(current_frequency_percent)
-        top_freq = current_frequency_percent+current_frequency_percent*0.3
-        bottom_freq = current_frequency_percent-current_frequency_percent*0.3
-        top_freq_value = (max_frequency*top_freq)/100
-        bottom_freq_value = (max_frequency*bottom_freq)/100
+        top_freq = current_frequency_percent+current_frequency_percent*0.2
+        bottom_freq = current_frequency_percent-current_frequency_percent*0.2
+        top_freq_value = round((max_frequency*top_freq)/100)
+        bottom_freq_value = round((max_frequency*bottom_freq)/100)
         near_frequent_terms = terms_df[terms_df['counts'].between(bottom_freq_value, top_freq_value)]
         terms_freq = {row['term']:row['counts'] for row in near_frequent_terms[['term','counts']].to_dict('records')}
         img = BytesIO()
         wordcloud(terms_freq).save(img, format='PNG')
-        value = dbc.Alert(f'Selected term "{point[0]["hovertext"]}" with frequency = {point[0]["y"]}. '
-                          f'Frequent terms for {point[0]["x"]}', color="primary")
-        value_1 = dbc.Alert(f'Selected term "{point[0]["hovertext"]}" with frequency = {point[0]["y"]}. '
-                          f'Terms for {point[0]["x"]} with frequencies between {bottom_freq_value} and {top_freq_value}', color="primary")
+        value = html.H3([point[0]["hovertext"], dbc.Badge(f'frequency: {point[0]["y"]}', className="ml-1"), dbc.Badge(f'date: {point[0]["x"]}', className="ml-1")])
+        value_1 = html.H3([point[0]["hovertext"], dbc.Badge(f'frequencies between {bottom_freq_value} and {top_freq_value}', className="ml-2")])
         return terms_df[['term','counts']].to_dict('records'),\
                [{"name": i, "id": i} for i in terms_df.columns],\
                 [],\
@@ -240,11 +223,9 @@ def user_input_list(n_clicks,
               Input('userinput-table', 'data'),
               State('userinput-table', 'data'))
 def update_graph(selected, data):
-    print(selected)
     result = []
     for x in selected:
         result.append(all_terms[all_terms['term'] == x['term']])
-    print(result)
     if len(result) > 0:
         result = pd.concat(result).to_json(date_format='iso', orient='split')
     try:
