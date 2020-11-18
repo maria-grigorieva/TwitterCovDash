@@ -119,7 +119,7 @@ app.layout = dbc.Container([
 
 
 def wordcloud(data):
-    wc = WordCloud(background_color='white', width=300, height=200)
+    wc = WordCloud(background_color='white', width=460, height=320)
     wc.fit_words(data)
     return wc.to_image()
 
@@ -159,21 +159,31 @@ def display_click_data(clickData):
         return [],[],[],None,None,None
 
 
-@app.callback(Output('userinput-table','data'),
-              [Input('submit-val', 'n_clicks'),
-               Input('all-terms-table', "derived_virtual_data"),
+@app.callback(Output('userinput-table', 'data'),
+                      Input('submit-val', 'n_clicks'),
+                      [State('term', 'value'),
+                       State('userinput-table', 'data'),
+                       State('userinput-table', 'columns')])
+def user_input_list(n_clicks, value, rows, columns):
+    if n_clicks > 0:
+        if rows is not None:
+            rows.append({"term": value})
+            return rows
+        else:
+            return [{"term": value}]
+
+
+@app.callback(Output('intermediate-value', 'children'),
+              [Input('all-terms-table', "derived_virtual_data"),
                Input('all-terms-table', 'derived_virtual_selected_rows'),
                Input('all-bigrams-table', "derived_virtual_data"),
                Input('all-bigrams-table', 'derived_virtual_selected_rows'),
                Input('all-trigrams-table', "derived_virtual_data"),
                Input('all-trigrams-table', 'derived_virtual_selected_rows'),
                Input('day-terms-table', "derived_virtual_data"),
-               Input('day-terms-table', 'derived_virtual_selected_rows')],
-              [State('term', 'value'),
-               State('userinput-table', 'data'),
-               State('userinput-table', 'columns')])
-def user_input_list(n_clicks,
-                    term_data,
+               Input('day-terms-table', 'derived_virtual_selected_rows')]
+              )
+def user_input_list(term_data,
                     term_selected,
                     bigram_data,
                     bigram_selected,
@@ -181,11 +191,10 @@ def user_input_list(n_clicks,
                     trigram_selected,
                     day_data,
                     day_selected,
-                    value,
-                    rows,
-                    columns):
+                    ):
     selected = []
     if term_data is not None:
+        [row['term'] for i, row in enumerate(term_data) if i in term_selected if term_data is not None]
         for i, row in enumerate(term_data):
             if i in term_selected:
                 selected.append(row['term'])
@@ -201,41 +210,44 @@ def user_input_list(n_clicks,
         for i, row in enumerate(day_data):
             if i in day_selected:
                 selected.append(row['term'])
-    if rows is not None:
-        for x in selected:
-            if not any(d['term'] == x for d in rows):
-                rows.append({"term": x})
-        if n_clicks > 0:
-            if not any(d['term'] == value for d in rows):
-                rows.append({"term": value})
+    result = []
+    for x in selected:
+        result.append(all_terms[all_terms['term'] == x])
+    if len(result) > 0:
+        result = pd.concat(result).to_json(date_format='iso', orient='split')
+        return result
     else:
-        rows = []
-        for x in selected:
-            rows.append({"term": x})
-        if n_clicks > 0:
-            if not any(d['term'] == value for d in rows):
-                rows.append({"term": value})
-
-    return rows
+        return ''
 
 
 @app.callback(Output('graph', 'figure'),
-              Input('userinput-table', 'data'),
-              State('userinput-table', 'data'))
-def update_graph(selected, data):
+            [Input('intermediate-value', 'children'),
+             Input('userinput-table', 'data'),
+              State('userinput-table', 'data')])
+def update_graph_userinput(intermediate, userinput, data):
+    try:
+        dff = pd.read_json(intermediate, orient='split')
+        try:
+            fig = px.scatter(pd.concat([display_userinput(userinput),dff]), x="date", y="counts", color="term", hover_name="term")
+        except Exception:
+            fig = px.scatter(dff, x="date", y="counts", color="term", hover_name="term")
+    except Exception:
+        try:
+            fig = px.scatter(display_userinput(userinput), x="date", y="counts", color="term",
+                             hover_name="term")
+        except Exception:
+            fig = px.scatter()
+    return fig
+
+
+
+def display_userinput(userinput):
     result = []
-    for x in selected:
+    for x in userinput:
         result.append(all_terms[all_terms['term'] == x['term']])
     if len(result) > 0:
         result = pd.concat(result).to_json(date_format='iso', orient='split')
-    try:
-        dff = pd.read_json(result, orient='split')
-        fig = px.scatter(dff, x="date", y="counts", color="term",
-                   hover_name="term")
-    except Exception:
-        fig = px.scatter()
-    return fig
-
+    return pd.read_json(result, orient='split')
 
 
 if __name__ == '__main__':
