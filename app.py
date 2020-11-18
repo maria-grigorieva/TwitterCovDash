@@ -222,9 +222,10 @@ def user_input_list(term_data,
 
 @app.callback(Output('graph', 'figure'),
             [Input('intermediate-value', 'children'),
-             Input('userinput-table', 'data'),
-              State('userinput-table', 'data')])
-def update_graph_userinput(intermediate, userinput, data):
+             Input('userinput-table', 'data')],
+             [State('userinput-table', 'data'),
+             State('graph', 'figure')])
+def update_graph(intermediate, userinput, data, previous_figure):
     try:
         dff = pd.read_json(intermediate, orient='split')
         try:
